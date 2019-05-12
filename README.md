@@ -1,18 +1,18 @@
-#Leaflet.zoomSVG - Proof-of-Concept
+# Leaflet.zoomSVG - Proof-of-Concept
 A Leaflet SVG Renderer that does not re-project or redraw features upon map zoom change (only point radii are updated).  
 Suitable for 2D maps. Has no external dependencies.  This Proof-of-Concept was developed against Leaflet 1.5.1 and 
 inspiration came in part from some other Leaflet plugins.
 
-##Demo
+## Demo
 Leaflet GeoJSON [example](http://harrishudson.com/Leaflet-zoomSVG/).
 
-##Requirements
+## Requirements
 This Proof-of-Concept was developed against Leaflet 1.5.1.
 
-##Future work
+## Future work
 Currently doesn't cater for Zoom animation
 
-##Basic Usage
+## Basic Usage
 - Ensure Leaflet script and css tags are included
 ````js
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.5.1/dist/leaflet.css" />
@@ -28,5 +28,5 @@ Currently doesn't cater for Zoom animation
  var map = L.map('map',{renderer: L.zoomSVG()})
 ````
 
-##Author 
+## Author 
 Harris Hudson
