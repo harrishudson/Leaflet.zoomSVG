@@ -1,0 +1,7 @@
+# Copyright (c) 2019, Harris Hudson.
+.leaflet-overlay-pane { overflow: visible; }
+.leaflet-map-pane { overflow: visible; }
+.leaflet-pane > svg circle.leaflet-interactive {
+	pointer-events: visiblePainted; 
+	pointer-events: auto;
+	}
