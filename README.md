@@ -3,8 +3,10 @@ A Leaflet SVG Renderer that does not re-project or redraw features upon map zoom
 Suitable for 2D maps. Has no external dependencies.  This Proof-of-Concept was developed against Leaflet 1.5.1 and 
 inspiration came in part from some other Leaflet plugins.
 
+![Snapshot](https://harrishudson.com/github/Leaflet-zoomSVG_snapshot1.png)
+
 ## Demo
-Leaflet GeoJSON [example](http://harrishudson.com/Leaflet-zoomSVG/).
+Leaflet GeoJSON [example](https://harrishudson.com/Leaflet-zoomSVG/).
 
 ## Requirements
 This Proof-of-Concept was developed against Leaflet 1.5.1.
