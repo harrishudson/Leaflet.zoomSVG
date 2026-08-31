@@ -1,5 +1,6 @@
+
 /*
- * Copyright (c) 2019, Harris Hudson. 
+ * Copyright (c) 2026, Harris Hudson.
  *
  * @class zoomSVG
  * @inherits Renderer
@@ -20,11 +21,11 @@
 
 L.ZoomSVG = L.Renderer.extend({
 
- 	_dontMangle: true,
+	_dontMangle: true,
 
 	svgCreate: function (name) {
 		 return document.createElementNS('http://www.w3.org/2000/svg', name);
- 	},
+	},
 
 	pointsToPath: function(rings, closed) {
 		var str = '',
@@ -37,56 +38,92 @@ L.ZoomSVG = L.Renderer.extend({
 				p = points[j];
 				str += (j ? 'L' : 'M') + p.x + ' ' + p.y;
 			}
-	
+
 			str += closed ? 'z' : '';
 		}
 
 		return str || 'M0 0';
 	},
-	
+
 	_undefined: function(a) { return typeof a == "undefined" },
 
-	getEvents: function () {
-		var events = L.Renderer.prototype.getEvents.call(this);
-		events.zoomstart = this._onZoomStart;
-		return events;
+        getEvents: function () {
+                var events = L.Renderer.prototype.getEvents.call(this);
+                events.zoomstart = this._onZoomStart;
+                // Prevent the inherited base Renderer._reset() from running on
+                // 'viewreset' - it would reproject and redraw every layer's path,
+                // which conflicts with this renderer's whole design.
+                events.viewreset = this._onViewReset;
+                events.zoomanim = this._onAnimZoom;
+                return events;
+        },
+
+        _onViewReset: function (evt) {
+                // Keep positioning/bookkeeping in sync, but deliberately skip
+                // calling _reset() on every layer (which is what the base
+                // Renderer.getEvents() would otherwise wire 'viewreset' to).
+                this._update();
+                this._updateTransform(this.map.getCenter(), this.map.getZoom());
+        },
+
+	// Called once per animated zoom with the *target* center/zoom.
+	// Actual frame-by-frame smoothing is left to the browser's CSS
+	// transition on the .leaflet-zoom-animated element (see onAdd and
+	// _updateTransform below) - this mirrors how Leaflet's own SVG/Canvas
+	// renderers hook zoomanim.
+	_onAnimZoom: function (ev) {
+		this._updateTransform(ev.center, ev.zoom);
 	},
 
-	_updateTransform: function(center, zoom) { },
-
+	// Non-animated zoom changes (e.g. zoomAnimation:false, or a zoom
+	// change that doesn't go through the CSS animation path) still come
+	// through here via the manual map.on('zoom', ...) binding in onAdd.
 	_onZoom: function (evt) {
-        	var newZoom = this._undefined(evt.zoom) ? this.map._zoom : evt.zoom; 
-        	this._zoomDiff = newZoom - this._Orig_zoom;
-        	this._scale = Math.pow(2, this._zoomDiff);
-        	this._shift = this.map.latLngToLayerPoint(this._wgsOrigin)
-            			._subtract(this._wgsInitialShift.multiplyBy(this._scale));
-        	var shift = ["translate(", this._shift.x, ",", this._shift.y, ") "];
-        	var scale = ["scale(", this._scale, ",", this._scale,") "];
-        	this._rootGroup.setAttribute("transform", shift.concat(scale).join(""));
-    	},
+		this._updateTransform(this.map.getCenter(), evt && evt.zoom);
+	},
+
+	_updateTransform: function (center, zoom) {
+		var newZoom = this._undefined(zoom) ? this.map._zoom : zoom;
+		this._zoomDiff = newZoom - this._Orig_zoom;
+		this._scale = Math.pow(2, this._zoomDiff);
+		this._shift = this.map.latLngToLayerPoint(this._wgsOrigin)
+				._subtract(this._wgsInitialShift.multiplyBy(this._scale));
+
+		// Set the transform as a CSS style (not an SVG attribute) on the
+		// element that actually carries the leaflet-zoom-animated class,
+		// so it participates in Leaflet's built-in
+		// ".leaflet-zoom-anim .leaflet-zoom-animated { transition: transform ... }"
+		// rule and animates smoothly instead of snapping.
+		L.DomUtil.setTransform(this._rootGroup, this._shift, this._scale);
+	},
 
 	onAdd: function (map) {
-        	this.map = map;
+		this.map = map;
 
 		this._dontMangle = true;
 
-        	if (!this._container) {
-	  		this._initContainer(); 
-          	if (this._zoomAnimated) {
-			L.DomUtil.addClass(this._container, 'leaflet-zoom-animated');
-			}
+		if (!this._container) {
+			this._initContainer();
 		}
 
-        	this._pixelOrigin = map.getPixelOrigin();
-        	this._wgsOrigin = L.latLng([0, 0]);
-        	this._wgsInitialShift = this.map.latLngToLayerPoint(this._wgsOrigin);
-        	this._shift = L.point(0, 0);
-        	this._scale = 1;
-        	this._zoom = this._Orig_zoom = this.map.getZoom();
+		if (this._zoomAnimated) {
+			// IMPORTANT: the transform is applied to _rootGroup (the
+			// inner <g>), so the leaflet-zoom-animated class - and the
+			// CSS transition it triggers during an animated zoom - must
+			// be on that same element, not on the outer _container <svg>.
+			L.DomUtil.addClass(this._rootGroup, 'leaflet-zoom-animated');
+		}
+
+		this._pixelOrigin = map.getPixelOrigin();
+		this._wgsOrigin = L.latLng([0, 0]);
+		this._wgsInitialShift = this.map.latLngToLayerPoint(this._wgsOrigin);
+		this._shift = L.point(0, 0);
+		this._scale = 1;
+		this._zoom = this._Orig_zoom = this.map.getZoom();
 
 		this.getPane().appendChild(this._container);
 		this._update();
-		map.on('zoom',this._onZoom, this);
+		map.on('zoom', this._onZoom, this);
 	},
 
 	_initContainer: function () {
@@ -94,8 +131,8 @@ L.ZoomSVG = L.Renderer.extend({
 		this._container.setAttribute('pointer-events', 'none');
 		this._container.setAttribute('overflow', 'visible');
 		this._rootGroup = this.svgCreate('g');
-	        this._rootGroup.setAttribute('transform','translate(0,0) scale(1,1)');
-	        this._container.appendChild(this._rootGroup);
+		this._rootGroup.setAttribute('transform','translate(0,0) scale(1,1)');
+		this._container.appendChild(this._rootGroup);
 
 	},
 
@@ -110,8 +147,6 @@ L.ZoomSVG = L.Renderer.extend({
 
 	_onZoomChange: function(evt) { },
 
-	_onViewReset: function(evt) { },
-
 	_update: function () {
 		if (this._map._animatingZoom && this._bounds) { return; };
 		L.Renderer.prototype._update.call(this);
@@ -123,7 +158,7 @@ L.ZoomSVG = L.Renderer.extend({
 		if (layer &&
 		    layer.feature &&
 		    layer.feature.geometry &&
-		    layer.feature.geometry.type == 'Point') 
+		    layer.feature.geometry.type == 'Point')
 			path = layer._path = this.svgCreate('circle');
 		else
 			path = layer._path = this.svgCreate('path');
@@ -197,8 +232,8 @@ L.ZoomSVG = L.Renderer.extend({
 	},
 
 	_updateCircle: function (layer) {
-		var zoomDiff = this.map.getZoom() - this._Orig_zoom; 
-        	var scale = Math.pow(2, zoomDiff);
+		var zoomDiff = this.map.getZoom() - this._Orig_zoom;
+		var scale = Math.pow(2, zoomDiff);
 		var p = layer._point;
 		var r =  parseFloat(layer._radius/scale);
 		this._setPath(layer, null, p.x, p.y, r);
@@ -211,7 +246,7 @@ L.ZoomSVG = L.Renderer.extend({
 		circles.forEach(function(circle) {
 			let r = parseFloat(circle.getAttribute('data-orig-radius'));
 			circle.setAttribute("r",parseFloat(r/scale));
-		                           });
+					   });
 	},
 
 	_setPath: function (layer, path, cx, cy, r) {
@@ -243,7 +278,7 @@ L.Map.prototype.latLngToLayerPoint = function (latlng) {
 	var projectedPoint;
 	if (this.options &&
 	    this.options.renderer &&
-	    this.options.renderer._dontMangle) 
+	    this.options.renderer._dontMangle)
 		projectedPoint = this.project(L.latLng(latlng));
 	else
 		projectedPoint = this.project(L.latLng(latlng))._round();
@@ -254,7 +289,7 @@ L.Map.prototype._getNewPixelOrigin =  function (center, zoom) {
 	var viewHalf = this.getSize()._divideBy(2);
 	if (this.options &&
 	    this.options.renderer &&
-	    this.options.renderer._dontMangle) 
+	    this.options.renderer._dontMangle)
 		return this.project(center, zoom)._subtract(viewHalf)._add(this._getMapPanePos());
 	else
 		return this.project(center, zoom)._subtract(viewHalf)._add(this._getMapPanePos())._round();
