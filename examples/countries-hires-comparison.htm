@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>zoomSVG vs Default Leaflet SVG - Paint Time Comparison</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- zoomSVG plugin -->
+<link rel="stylesheet" href="../zoomSVG.css" />
+<script src="../zoomSVG.js"></script>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: "Segoe UI", Arial, sans-serif;
+    overflow: hidden;
+  }
+
+  .container {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  .pane {
+    flex: 1;
+    position: relative;
+    height: 100%;
+  }
+
+  .map-view {
+    width: 100%;
+    height: 100%;
+    background: #a8d0e6;
+  }
+
+  .comparison-header {
+    position: absolute;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1001;
+    background: rgba(31, 41, 55, 0.85);
+    color: #f9fafb;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    pointer-events: none;
+  }
+
+  /* Upgraded Performance Badge with Distinct Paint Time Highlight */
+  .perf-badge {
+    position: absolute;
+    top: 70px;
+    right: 20px;
+    z-index: 1000;
+    background: rgba(17, 24, 39, 0.92);
+    color: #9ca3af;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    pointer-events: none;
+    min-width: 190px;
+  }
+
+  .perf-badge strong {
+    color: #f9fafb;
+    display: block;
+    margin-bottom: 6px;
+    border-bottom: 1px solid #374151;
+    padding-bottom: 4px;
+    font-size: 13px;
+  }
+
+  /* Distinct Paint Time Hero Box */
+  .perf-paint-box {
+    background: rgba(56, 189, 248, 0.12);
+    border-left: 3px solid #38bdf8;
+    padding: 6px 8px;
+    margin: 6px 0;
+    border-radius: 0 6px 6px 0;
+  }
+
+  .perf-paint-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #7dd3fc;
+    display: block;
+  }
+
+  .perf-paint-value {
+    color: #38bdf8;
+    font-weight: bold;
+    font-size: 15px;
+  }
+
+  .country-tooltip {
+    background: #1f2937;
+    color: #f9fafb;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .country-tooltip::before { border-top-color: #1f2937 !important; }
+
+  .leaflet-popup-content-wrapper { border-radius: 8px; }
+  .country-popup h3 { margin: 0 0 6px 0; font-size: 16px; color: #1f2937; }
+  .country-popup p { margin: 2px 0; font-size: 13px; color: #4b5563; }
+
+  .legend {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    z-index: 1000;
+    background: rgba(255,255,255,0.92);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #1f2937;
+  }
+  .legend span {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    background: #4f9d69;
+    border: 1px solid #276749;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <div class="pane">
+        <div class="comparison-header">Default Leaflet Renderer (L.svg)</div>
+        <div class="perf-badge" id="perfDefault">
+            <strong>Ready (Zoom: 2)</strong>
+            Gesture Duration: -- ms
+            <div class="perf-paint-box">
+                <span class="perf-paint-label">Browser Paint Time</span>
+                <span class="perf-paint-value">-- ms</span>
+            </div>
+            Total Blocked: -- ms
+        </div>
+        <div id="mapDefault" class="map-view"></div>
+        <div class="legend"><span></span>Default SVG</div>
+    </div>
+
+    <div class="pane">
+        <div class="comparison-header">Custom zoomSVG Renderer (L.zoomSVG)</div>
+        <div class="perf-badge" id="perfZoomSVG">
+            <strong>Ready (Zoom: 2)</strong>
+            Gesture Duration: -- ms
+            <div class="perf-paint-box">
+                <span class="perf-paint-label">Browser Paint Time</span>
+                <span class="perf-paint-value">-- ms</span>
+            </div>
+            Total Blocked: -- ms
+        </div>
+        <div id="mapZoomSVG" class="map-view"></div>
+        <div class="legend"><span></span>zoomSVG</div>
+    </div>
+</div>
+
+<script>
+  const mapDefault = L.map('mapDefault', { worldCopyJump: true, renderer: L.svg(), zoomAnimation: false }).setView([20, 0], 2);
+  const mapZoomSVG = L.map('mapZoomSVG', { worldCopyJump: true, renderer: L.zoomSVG(), zoomAnimation: false }).setView([20, 0], 2);
+
+  const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const attr = '&copy; OpenStreetMap';
+  L.tileLayer(tileUrl, { maxZoom: 18, attribution: attr }).addTo(mapDefault);
+  L.tileLayer(tileUrl, { maxZoom: 18, attribution: attr }).addTo(mapZoomSVG);
+
+  // Performance timer with distinct paint time metric tracking
+  function setupPerformanceTimer(mapInstance, badgeElementId) {
+    const badge = document.getElementById(badgeElementId);
+    let isInteracting = false;
+    let startTime = 0;
+    let actionType = 'Pan';
+
+    mapInstance.on('zoomstart', () => {
+      if (!isInteracting) { startTime = performance.now(); isInteracting = true; }
+      actionType = 'Zoom';
+    });
+
+    mapInstance.on('movestart', () => {
+      if (!isInteracting) { startTime = performance.now(); isInteracting = true; }
+      if (actionType !== 'Zoom') actionType = 'Pan';
+    });
+
+    mapInstance.on('moveend', () => {
+      if (!isInteracting) return;
+      
+      const duration = performance.now() - startTime;
+      const currentZoom = mapInstance.getZoom();
+      
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const totalTime = performance.now() - startTime;
+          const paintTime = Math.max(0, totalTime - duration);
+          
+          badge.innerHTML = `
+            <strong>${actionType} (Zoom: ${currentZoom})</strong>
+            Gesture Duration: ${duration.toFixed(1)} ms
+            <div class="perf-paint-box">
+                <span class="perf-paint-label">Browser Paint Time</span>
+                <span class="perf-paint-value">${paintTime.toFixed(1)} ms</span>
+            </div>
+            Total Blocked: ${totalTime.toFixed(1)} ms
+          `;
+          
+          isInteracting = false;
+          actionType = 'Pan';
+        });
+      });
+    });
+  }
+
+  setupPerformanceTimer(mapDefault, 'perfDefault');
+  setupPerformanceTimer(mapZoomSVG, 'perfZoomSVG');
+
+  function defaultStyle() { return { fillColor: '#4f9d69', weight: 1, opacity: 1, color: '#276749', fillOpacity: 0.55 }; }
+  function highlightStyle() { return { weight: 2, color: '#f97316', fillColor: '#fbbf24', fillOpacity: 0.75 }; }
+
+  function setupMapInteractions(mapInstance) {
+    let geojsonLayer;
+    let hoveredLayer = null;
+
+    fetch('https://raw.githubusercontent.com/datasets/geo-countries/refs/heads/main/data/countries.geojson')
+      .then(res => res.json())
+      .then(data => {
+        geojsonLayer = L.geoJSON(data, {
+          style: defaultStyle,
+          onEachFeature: function(feature, layer) {
+            const name = feature.properties.name || feature.properties.ADMIN || 'Unknown';
+            layer.bindTooltip(name, { className: 'country-tooltip', sticky: true });
+            
+            layer.on({
+              mouseover: function(e) {
+                if (hoveredLayer && hoveredLayer !== e.target) { geojsonLayer.resetStyle(hoveredLayer); }
+                hoveredLayer = e.target;
+                e.target.setStyle(highlightStyle());
+                e.target.bringToFront();
+              },
+              mouseout: function(e) {
+                geojsonLayer.resetStyle(e.target);
+                if (hoveredLayer === e.target) hoveredLayer = null;
+              }
+            });
+          }
+        }).addTo(mapInstance);
+        mapInstance.fitBounds(geojsonLayer.getBounds());
+      });
+  }
+
+  setupMapInteractions(mapDefault);
+  setupMapInteractions(mapZoomSVG);
+</script>
+
+</body>
+</html>

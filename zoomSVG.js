@@ -1,4 +1,3 @@
-
 /*
  * Copyright (c) 2026, Harris Hudson.
  *
@@ -23,13 +22,15 @@ L.ZoomSVG = L.Renderer.extend({
 
 	_dontMangle: true,
 
+	_hasCircles: false,
+
 	svgCreate: function (name) {
-		 return document.createElementNS('http://www.w3.org/2000/svg', name);
+		return document.createElementNS('http://www.w3.org/2000/svg', name);
 	},
 
 	pointsToPath: function(rings, closed) {
 		var str = '',
-		    i, j, len, len2, points, p, projpnt;
+		    i, j, len, len2, points, p;
 
 		for (i = 0, len = rings.length; i < len; i++) {
 			points = rings[i];
@@ -45,39 +46,32 @@ L.ZoomSVG = L.Renderer.extend({
 		return str || 'M0 0';
 	},
 
-	_undefined: function(a) { return typeof a == "undefined" },
+	_undefined: function(a) { return typeof a === "undefined"; },
 
-        getEvents: function () {
-                var events = L.Renderer.prototype.getEvents.call(this);
-                events.zoomstart = this._onZoomStart;
-                // Prevent the inherited base Renderer._reset() from running on
-                // 'viewreset' - it would reproject and redraw every layer's path,
-                // which conflicts with this renderer's whole design.
-                events.viewreset = this._onViewReset;
-                events.zoomanim = this._onAnimZoom;
-                return events;
-        },
+	getEvents: function () {
+		var events = L.Renderer.prototype.getEvents.call(this);
+		events.zoomstart = this._onZoomStart;
+		// Prevent the inherited base Renderer._reset() from running on
+		// 'viewreset' - it would reproject and redraw every layer's path,
+		// which conflicts with this renderer's whole design.
+		events.viewreset = this._onViewReset;
+		events.zoomanim = this._onAnimZoom;
+		return events;
+	},
 
         _onViewReset: function (evt) {
-                // Keep positioning/bookkeeping in sync, but deliberately skip
-                // calling _reset() on every layer (which is what the base
-                // Renderer.getEvents() would otherwise wire 'viewreset' to).
-                this._update();
-                this._updateTransform(this.map.getCenter(), this.map.getZoom());
+            // When panning or resetting the view, we only need to update 
+            // the CSS transform shift to keep the SVG aligned with the map tiles.
+            // We deliberately omit this._update() to prevent unnecessary path re-projection!
+            this._updateTransform(this.map.getCenter(), this.map.getZoom());
         },
 
 	// Called once per animated zoom with the *target* center/zoom.
-	// Actual frame-by-frame smoothing is left to the browser's CSS
-	// transition on the .leaflet-zoom-animated element (see onAdd and
-	// _updateTransform below) - this mirrors how Leaflet's own SVG/Canvas
-	// renderers hook zoomanim.
 	_onAnimZoom: function (ev) {
 		this._updateTransform(ev.center, ev.zoom);
 	},
 
-	// Non-animated zoom changes (e.g. zoomAnimation:false, or a zoom
-	// change that doesn't go through the CSS animation path) still come
-	// through here via the manual map.on('zoom', ...) binding in onAdd.
+	// Non-animated zoom changes
 	_onZoom: function (evt) {
 		this._updateTransform(this.map.getCenter(), evt && evt.zoom);
 	},
@@ -89,11 +83,6 @@ L.ZoomSVG = L.Renderer.extend({
 		this._shift = this.map.latLngToLayerPoint(this._wgsOrigin)
 				._subtract(this._wgsInitialShift.multiplyBy(this._scale));
 
-		// Set the transform as a CSS style (not an SVG attribute) on the
-		// element that actually carries the leaflet-zoom-animated class,
-		// so it participates in Leaflet's built-in
-		// ".leaflet-zoom-anim .leaflet-zoom-animated { transition: transform ... }"
-		// rule and animates smoothly instead of snapping.
 		L.DomUtil.setTransform(this._rootGroup, this._shift, this._scale);
 	},
 
@@ -107,10 +96,6 @@ L.ZoomSVG = L.Renderer.extend({
 		}
 
 		if (this._zoomAnimated) {
-			// IMPORTANT: the transform is applied to _rootGroup (the
-			// inner <g>), so the leaflet-zoom-animated class - and the
-			// CSS transition it triggers during an animated zoom - must
-			// be on that same element, not on the outer _container <svg>.
 			L.DomUtil.addClass(this._rootGroup, 'leaflet-zoom-animated');
 		}
 
@@ -132,8 +117,9 @@ L.ZoomSVG = L.Renderer.extend({
 		this._container.setAttribute('overflow', 'visible');
 		this._rootGroup = this.svgCreate('g');
 		this._rootGroup.setAttribute('transform','translate(0,0) scale(1,1)');
+		// Hardware acceleration hint to boost SVG transform rendering speed on GPU
+		this._rootGroup.style.willChange = 'transform';
 		this._container.appendChild(this._rootGroup);
-
 	},
 
 	_destroyContainer: function () {
@@ -148,9 +134,20 @@ L.ZoomSVG = L.Renderer.extend({
 	_onZoomChange: function(evt) { },
 
 	_update: function () {
-		if (this._map._animatingZoom && this._bounds) { return; };
+		if (this._map && this._map._animatingZoom && this._bounds) { return; }
+		
+		// Guard against full re-projection during pure zoom events
+		if (this._zooming) {
+			if (this._hasCircles) {
+				this._updateCircleRadii();
+			}
+			return;
+		}
+
 		L.Renderer.prototype._update.call(this);
-		this._updateCircleRadii();
+		if (this._hasCircles) {
+			this._updateCircleRadii();
+		}
 	},
 
 	_initPath: function (layer) {
@@ -158,10 +155,11 @@ L.ZoomSVG = L.Renderer.extend({
 		if (layer &&
 		    layer.feature &&
 		    layer.feature.geometry &&
-		    layer.feature.geometry.type == 'Point')
+		    layer.feature.geometry.type === 'Point') {
 			path = layer._path = this.svgCreate('circle');
-		else
+		} else {
 			path = layer._path = this.svgCreate('path');
+		}
 
 		if (layer.options.className) {
 			L.DomUtil.addClass(path, layer.options.className);
@@ -235,30 +233,30 @@ L.ZoomSVG = L.Renderer.extend({
 		var zoomDiff = this.map.getZoom() - this._Orig_zoom;
 		var scale = Math.pow(2, zoomDiff);
 		var p = layer._point;
-		var r =  parseFloat(layer._radius/scale);
+		var r = parseFloat(layer._radius / scale);
 		this._setPath(layer, null, p.x, p.y, r);
 	},
 
-	_updateCircleRadii() {
+	_updateCircleRadii: function () {
 		var zoomDiff = this.map.getZoom() - this._Orig_zoom;
 		var scale = Math.pow(2, zoomDiff);
 		var circles = this._rootGroup.querySelectorAll('circle');
 		circles.forEach(function(circle) {
 			let r = parseFloat(circle.getAttribute('data-orig-radius'));
-			circle.setAttribute("r",parseFloat(r/scale));
-					   });
+			circle.setAttribute("r", parseFloat(r / scale));
+		});
 	},
 
 	_setPath: function (layer, path, cx, cy, r) {
-		if (path)
+		if (path) {
 			layer._path.setAttribute('d', path);
-		else {
+		} else {
 			layer._path.setAttribute('cx', cx);
 			layer._path.setAttribute('cy', cy);
 			layer._path.setAttribute('r', r);
 			layer._path.setAttribute('data-orig-radius', r);
-		     }
-
+			this._hasCircles = true;
+		}
 	},
 
 	_bringToFront: function (layer) {
@@ -278,31 +276,46 @@ L.Map.prototype.latLngToLayerPoint = function (latlng) {
 	var projectedPoint;
 	if (this.options &&
 	    this.options.renderer &&
-	    this.options.renderer._dontMangle)
+	    this.options.renderer._dontMangle) {
 		projectedPoint = this.project(L.latLng(latlng));
-	else
+	} else {
 		projectedPoint = this.project(L.latLng(latlng))._round();
-	return projectedPoint._subtract(this.getPixelOrigin());
 	}
+	return projectedPoint._subtract(this.getPixelOrigin());
+};
 
-L.Map.prototype._getNewPixelOrigin =  function (center, zoom) {
+L.Map.prototype._getNewPixelOrigin = function (center, zoom) {
 	var viewHalf = this.getSize()._divideBy(2);
 	if (this.options &&
 	    this.options.renderer &&
-	    this.options.renderer._dontMangle)
+	    this.options.renderer._dontMangle) {
 		return this.project(center, zoom)._subtract(viewHalf)._add(this._getMapPanePos());
-	else
+	} else {
 		return this.project(center, zoom)._subtract(viewHalf)._add(this._getMapPanePos())._round();
-	};
+	}
+};
 
 L.Polyline.prototype._update = function() {
 	if (!this._map) { return; }
+	
 	if (this._renderer && this._renderer._dontMangle) {
-		this.options.noClip = true;
-		this._clipPoints();
+		// Completely bypass clipping and geometry re-calculation on zoom/pan transforms
+		if (this._parts && this._parts.length > 0) {
+			this._updatePath();
+			return;
+		}
+		
+		// Initial setup: clone raw points directly to _parts without running _clipPoints
+		this._parts = [];
+		if (this._rings) {
+			for (var i = 0; i < this._rings.length; i++) {
+				this._parts.push(this._rings[i].slice());
+			}
+		}
 		this._updatePath();
 		return;
-	};
+	}
+
 	this._clipPoints();
 	this._simplifyPoints();
 	this._updatePath();
